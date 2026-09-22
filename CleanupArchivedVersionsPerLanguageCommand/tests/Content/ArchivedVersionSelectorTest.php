@@ -151,18 +151,15 @@ final class ArchivedVersionSelectorTest extends TestCase
     }
 
     /**
+     * @param \Ibexa\Contracts\Core\Repository\Values\Content\VersionInfo[] $versions
      * @param int[] $expectedRemoved
      */
     #[DataProvider('provideKeepValues')]
-    public function testKeepProtectsTheMostRecentVersions(int $keep, array $expectedRemoved): void
-    {
-        $versions = [
-            self::version(1, 'eng-GB', 100),
-            self::version(2, 'eng-GB', 200),
-            self::version(3, 'eng-GB', 300),
-            self::version(4, 'ger-DE', 400),
-        ];
-
+    public function testKeepIsAFloorOnTheNumberOfSurvivingVersions(
+        array $versions,
+        int $keep,
+        array $expectedRemoved
+    ): void {
         self::assertSame(
             $expectedRemoved,
             self::versionNumbers($this->selector->selectRemovable($versions, $keep))
@@ -170,16 +167,38 @@ final class ArchivedVersionSelectorTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{int, int[]}>
+     * @return iterable<string, array{
+     *     \Ibexa\Contracts\Core\Repository\Values\Content\VersionInfo[],
+     *     int,
+     *     int[],
+     * }>
      */
     public static function provideKeepValues(): iterable
     {
-        yield 'keep nothing extra' => [0, [2, 1]];
-        yield 'keep the most recent version' => [1, [2, 1]];
-        yield 'keep the two most recent versions' => [2, [2, 1]];
-        yield 'keep three, protecting the second eng-GB version' => [3, [1]];
-        yield 'keep as many as there are versions' => [4, []];
-        yield 'keep more than there are versions' => [10, []];
+        // The language rule alone keeps v4 (ger-DE) and v3 (eng-GB): two survivors.
+        $redundantAtTheTail = [
+            self::version(1, 'eng-GB', 100),
+            self::version(2, 'eng-GB', 200),
+            self::version(3, 'eng-GB', 300),
+            self::version(4, 'ger-DE', 400),
+        ];
+
+        yield 'no floor' => [$redundantAtTheTail, 0, [2, 1]];
+        yield 'floor below the number of survivors' => [$redundantAtTheTail, 1, [2, 1]];
+        yield 'floor equal to the number of survivors' => [$redundantAtTheTail, 2, [2, 1]];
+        yield 'floor above the number of survivors keeps the most recent one back' => [$redundantAtTheTail, 3, [1]];
+        yield 'floor equal to the version count' => [$redundantAtTheTail, 4, []];
+        yield 'floor above the version count' => [$redundantAtTheTail, 10, []];
+
+        $redundantAmongTheNewest = [
+            self::version(29, 'ger-DE', 100),
+            self::version(30, 'eng-GB', 200),
+            self::version(33, 'eng-GB', 300),
+        ];
+
+        yield 'redundant version among the newest, no floor' => [$redundantAmongTheNewest, 0, [30]];
+        yield 'redundant version among the newest, floor already met' => [$redundantAmongTheNewest, 2, [30]];
+        yield 'redundant version among the newest, floor forces it back' => [$redundantAmongTheNewest, 3, []];
     }
 
     /**
