@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Content\ArchivedVersionSelector;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Exception;
@@ -38,7 +39,8 @@ EOT;
 
     public function __construct(
         private readonly Repository $repository,
-        private readonly Connection $connection
+        private readonly Connection $connection,
+        private readonly ArchivedVersionSelector $versionSelector
     ) {
         parent::__construct();
     }
@@ -158,15 +160,13 @@ EOT
                     $contentService->loadVersions($contentInfo, VersionInfo::STATUS_ARCHIVED)
                 );
 
-                $versions = $this->sortVersionsByRecency($versions);
-
                 $output->writeln(sprintf(
                     '<info>Content %d has %d archived version(s).</info>',
                     $contentInfo->getId(),
                     count($versions)
                 ), OutputInterface::VERBOSITY_VERBOSE);
 
-                $versionsToRemove = $this->getVersionsToRemove($versions, $keep);
+                $versionsToRemove = $this->versionSelector->selectRemovable($versions, $keep);
                 if ($versionsToRemove !== []) {
                     ++$affectedContentCounter;
                 }
@@ -207,59 +207,10 @@ EOT
     }
 
     /**
-     *
-     * @param \Ibexa\Contracts\Core\Repository\Values\Content\VersionInfo[] $versions
-     *
-     * @return \Ibexa\Contracts\Core\Repository\Values\Content\VersionInfo[]
-     */
-    private function sortVersionsByRecency(array $versions): array
-    {
-        usort(
-            $versions,
-            static fn (VersionInfo $a, VersionInfo $b): int
-                => [$b->modificationDate->getTimestamp(), $b->getVersionNo()]
-                <=> [$a->modificationDate->getTimestamp(), $a->getVersionNo()]
-        );
-
-        return $versions;
-    }
-
-    /**
-     *
-     * @param \Ibexa\Contracts\Core\Repository\Values\Content\VersionInfo[] $versions sorted from newest to oldest
-     *
-     * @return \Ibexa\Contracts\Core\Repository\Values\Content\VersionInfo[]
-     */
-    private function getVersionsToRemove(array $versions, int $keep): array
-    {
-        $coveredLanguages = [];
-        $versionsToRemove = [];
-
-        foreach ($versions as $index => $version) {
-            $languageCode = $version->getInitialLanguage()->getLanguageCode();
-
-            if (!in_array($languageCode, $coveredLanguages, true)) {
-                // This version holds the most recent archived state of that translation.
-                $coveredLanguages[] = $languageCode;
-
-                continue;
-            }
-
-            if ($index < $keep) {
-                continue;
-            }
-
-            $versionsToRemove[] = $version;
-        }
-
-        return $versionsToRemove;
-    }
-
-    /**
      * Narrows the work down to the content items that can have archived versions removed.
      *
      * This is a cheap SQL pre-filter; the final decision is taken per content item by
-     * {@see self::getVersionsToRemove()}, which works on the domain objects.
+     * {@see \App\Content\ArchivedVersionSelector}, which works on the domain objects.
      *
      * @param string[] $excludedContentTypes
      * @param int[] $contentIds
