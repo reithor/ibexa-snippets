@@ -54,7 +54,7 @@ final class ArchivedVersionSelector
      * Sorts versions from the most to the least recently published.
      *
      * Ordering is by modification date, not by version number: the version number only reflects the
-     * creation order of the draft, while `ibexa_content_version.modified` is rewritten with time()
+     * creation order of the draft, while `ezcontentobject_version.modified` is rewritten with time()
      * every time a version's status changes (see
      * {@see \Ibexa\Core\Persistence\Legacy\Content\Gateway\DoctrineDatabase\QueryBuilder::getSetVersionStatusQuery()}),
      * so for an archived version it is the moment it stopped being the published one. Drafts can be

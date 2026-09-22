@@ -9,7 +9,6 @@ use DateTimeImmutable;
 use Ibexa\Contracts\Core\Repository\Values\Content\Language;
 use Ibexa\Contracts\Core\Repository\Values\Content\VersionInfo as APIVersionInfo;
 use Ibexa\Core\Repository\Values\Content\VersionInfo;
-use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class ArchivedVersionSelectorTest extends TestCase
@@ -25,8 +24,9 @@ final class ArchivedVersionSelectorTest extends TestCase
      * @param \Ibexa\Contracts\Core\Repository\Values\Content\VersionInfo[] $versions
      * @param int[] $expectedRemoved version numbers expected to be removed
      * @param int[] $expectedKept version numbers expected to survive
+     *
+     * @dataProvider provideVersionHistories
      */
-    #[DataProvider('provideVersionHistories')]
     public function testSelectRemovable(array $versions, array $expectedRemoved, array $expectedKept): void
     {
         $removable = $this->selector->selectRemovable($versions);
@@ -152,8 +152,9 @@ final class ArchivedVersionSelectorTest extends TestCase
 
     /**
      * @param int[] $expectedRemoved
+     *
+     * @dataProvider provideKeepValues
      */
-    #[DataProvider('provideKeepValues')]
     public function testKeepProtectsTheMostRecentVersions(int $keep, array $expectedRemoved): void
     {
         $versions = [

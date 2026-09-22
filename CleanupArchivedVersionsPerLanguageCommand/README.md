@@ -39,7 +39,7 @@ The version number reflects the order drafts were *created*
 (`getLastVersionNumber() + 1`), not the order they were published — drafts can be created in one
 order and published in another, so a lower version number can hold the more recent archived state.
 
-`ibexa_content_version.modified` is rewritten with `time()` on every status change
+`ezcontentobject_version.modified` is rewritten with `time()` on every status change
 (`Gateway\DoctrineDatabase\QueryBuilder::getSetVersionStatusQuery()` sets both `status` and
 `modified`), so for an archived version it is the moment it stopped being the published one — exactly
 the recency signal wanted here. The tie-breaker matters because `ContentService::deleteTranslation()`
@@ -51,7 +51,7 @@ creation order, hence the explicit re-sort.
 
 ### Candidate selection is only a pre-filter
 
-`getObjectsIds()` is a cheap SQL query over `ibexa_content` × `ibexa_content_version` (`status = 3`)
+`getObjectsIds()` is a cheap SQL query over `ezcontentobject` × `ezcontentobject_version` (`status = 3`)
 that narrows the work down; the real keep/delete decision is taken per content item on the domain
 objects in `getVersionsToRemove()`. A content item can therefore be listed as a candidate and still
 lose nothing.
@@ -77,3 +77,23 @@ The final summary counts the content items actually touched, not the candidates.
 Before a real run: back up the database, take the installation offline, run without a memory limit and
 with `--env=prod`.
 
+## Compatibility
+
+This branch targets **Ibexa DXP 4.6** (PHP 8.1+, doctrine/dbal 2.13, Symfony 5.4, PHPUnit 9). It
+differs from the 5.0 version in:
+
+* `ezcontentobject.contentclass_id` instead of `ibexa_content.content_type_id` (the table constants
+  `Gateway::CONTENT_ITEM_TABLE` etc. exist in both versions and resolve to the right names by
+  themselves, the column does not).
+* `Connection::PARAM_STR_ARRAY` / `PARAM_INT_ARRAY` instead of `ArrayParameterType`, which only
+  exists from doctrine/dbal 3.6.
+* `QueryBuilder::execute()` instead of `executeQuery()`, which doctrine/dbal 2.13 does not have. It
+  returns a `ForwardCompatibility\Result`, so `fetchFirstColumn()` still applies.
+* `ContentService::loadVersions()` returns a plain array, and `iterator_to_array()` only accepts
+  arrays as of PHP 8.2, so the result is passed through unchanged when it already is one.
+* `@dataProvider` annotations instead of `#[DataProvider]` attributes, which need PHPUnit 10.
+
+If the installation still runs PHP 8.0 or 7.4 (`ibexa/core` 4.6 allows both, although the supported
+matrix is 8.1+), also expand the promoted `readonly` constructor properties and replace the
+`#[AsCommand]` attribute with `setName()` / `setDescription()` in `configure()` - attributes are
+ignored on PHP 7.4, which would leave the command without a name.

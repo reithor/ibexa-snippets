@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Content\ArchivedVersionSelector;
-use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Exception;
 use Ibexa\Contracts\Core\Repository\Repository;
@@ -156,9 +155,12 @@ EOT
         foreach ($contentIds as $contentId) {
             try {
                 $contentInfo = $contentService->loadContentInfo((int) $contentId);
-                $versions = iterator_to_array(
-                    $contentService->loadVersions($contentInfo, VersionInfo::STATUS_ARCHIVED)
-                );
+                // loadVersions() is declared iterable but returns an array, and iterator_to_array()
+                // rejects arrays before PHP 8.2.
+                $versions = $contentService->loadVersions($contentInfo, VersionInfo::STATUS_ARCHIVED);
+                if (!is_array($versions)) {
+                    $versions = iterator_to_array($versions);
+                }
 
                 $output->writeln(sprintf(
                     '<info>Content %d has %d archived version(s).</info>',
@@ -226,7 +228,7 @@ EOT
             ->select('c.id')
             ->from(Gateway::CONTENT_ITEM_TABLE, 'c')
             ->join('c', Gateway::CONTENT_VERSION_TABLE, 'v', 'v.contentobject_id = c.id')
-            ->join('c', ContentTypeGateway::CONTENT_TYPE_TABLE, 'ct', 'ct.id = c.content_type_id')
+            ->join('c', ContentTypeGateway::CONTENT_TYPE_TABLE, 'ct', 'ct.id = c.contentclass_id')
             ->where($expr->eq('v.status', ':status'))
             ->groupBy('c.id')
             // Exactly one archived version is kept per initial language, so there is something to
@@ -237,16 +239,16 @@ EOT
         if ($excludedContentTypes !== []) {
             $query
                 ->andWhere($expr->notIn('ct.identifier', ':contentTypes'))
-                ->setParameter('contentTypes', $excludedContentTypes, ArrayParameterType::STRING);
+                ->setParameter('contentTypes', $excludedContentTypes, Connection::PARAM_STR_ARRAY);
         }
 
         if ($contentIds !== []) {
             $query
                 ->andWhere($expr->in('c.id', ':contentIds'))
-                ->setParameter('contentIds', $contentIds, ArrayParameterType::INTEGER);
+                ->setParameter('contentIds', $contentIds, Connection::PARAM_INT_ARRAY);
         }
 
-        return $query->executeQuery()->fetchFirstColumn();
+        return $query->execute()->fetchFirstColumn();
     }
 
     /**
