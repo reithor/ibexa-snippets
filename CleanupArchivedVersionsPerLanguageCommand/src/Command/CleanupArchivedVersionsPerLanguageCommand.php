@@ -73,7 +73,7 @@ EOT;
                 'keep',
                 'k',
                 InputOption::VALUE_REQUIRED,
-                'Number of the most recent archived versions kept on top of the per-language ones.',
+                'Minimum number of archived versions to keep per content item, even when the per-language rule would leave fewer.',
                 '0'
             )
             ->addOption(
@@ -91,6 +91,9 @@ touched.
 Every version carries all translations of the content item, not only the edited one, so "the version of
 a language" means the newest archived version whose <info>initial language</info> is that language -
 the last archived state in which that translation was edited.
+
+<info>--keep</info> is a floor, not a shield: it only matters when keeping one version per language
+would leave fewer archived versions than that. Drafts and the published version are not counted.
 
 Note: This script can potentially run for a very long time, and in the Symfony dev environment it will
 consume memory exponentially with the size of the dataset.

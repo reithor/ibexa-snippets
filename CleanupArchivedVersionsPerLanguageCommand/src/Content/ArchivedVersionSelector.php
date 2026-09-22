@@ -19,7 +19,9 @@ final class ArchivedVersionSelector
 {
     /**
      * @param \Ibexa\Contracts\Core\Repository\Values\Content\VersionInfo[] $versions archived versions of one content item, in any order
-     * @param int $keep number of the most recent versions to keep regardless of their language
+     * @param int $keep minimum number of archived versions that must survive; when the per-language
+     *                  rule alone would leave fewer, the most recent removable ones are kept back to
+     *                  reach it. Drafts and the published version are not counted.
      *
      * @return \Ibexa\Contracts\Core\Repository\Values\Content\VersionInfo[] the versions which can be removed
      */
@@ -30,7 +32,7 @@ final class ArchivedVersionSelector
         $coveredLanguages = [];
         $removable = [];
 
-        foreach ($versions as $index => $version) {
+        foreach ($versions as $version) {
             $languageCode = $version->getInitialLanguage()->getLanguageCode();
 
             if (!in_array($languageCode, $coveredLanguages, true)) {
@@ -40,14 +42,14 @@ final class ArchivedVersionSelector
                 continue;
             }
 
-            if ($index < $keep) {
-                continue;
-            }
-
             $removable[] = $version;
         }
 
-        return $removable;
+        $survivorCount = count($versions) - count($removable);
+        $shortfall = max(0, $keep - $survivorCount);
+
+        // $removable is in recency order, so dropping its head keeps the most recent ones back.
+        return array_slice($removable, $shortfall);
     }
 
     /**
