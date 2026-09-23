@@ -1,5 +1,6 @@
-# CleanupArchivedVersionsPerLanguageCommand
 
+
+# CleanupArchivedVersionsPerLanguageCommand
 `src/Command/CleanupArchivedVersionsPerLanguageCommand.php` — command name
 `app:content:cleanup-archived-versions`.
 
@@ -8,18 +9,20 @@ Modelled on `ibexa:content:cleanup-versions`
 (`vendor/ibexa/core/src/bundle/Core/Command/CleanupVersionsCommand.php`), which instead keeps the
 last N versions regardless of language.
 
-## What "one version per language" can mean in Ibexa
+## Preliminary remarks
 
-A version carries **all** translations of the content item, not only the one that was edited:
-`Handler::createDraftFromVersion()` loads the full content and clones every field of every language
-into the new version, and `DoctrineDatabase::updateVersion()` merges the language mask with a bitwise
-OR. Versions are therefore cumulative supersets of their predecessors — confirmed on this database,
-where no version holds a language that is absent from all newer versions (content 399: v3 = `DE`,
-v4…v7 = `DE` + `ger-DE`).
+- Code should be considered as 'proof of concept' and comes with no guarantee.
+- Before using it, make sure that behavior is exactly what you want.
+- When using the command, you should disable regular version removal by setting
+```
+ibexa:
+  repositories:
+    default:
+      options:
+         remove_archived_versions_on_publish: false
+```
+- Additionaly you should not run the standard cleanup command  `ibexa:content:cleanup-version` as this also might remove archived versions that you want to keep.
 
-So "the archived version of language X" cannot mean "a version containing X" — that is almost every
-version. It means the version whose **initial language** is X, i.e. the last archived state in which
-that translation was edited and published.
 
 ## How it decides what to keep
 
@@ -27,10 +30,42 @@ Only `VersionInfo::STATUS_ARCHIVED` versions are loaded, so published versions a
 touched. Per content item the command sorts the archived versions most-recent-first and keeps the
 first one it sees for each **initial language**; everything else is deleted.
 
-Matching by the translations a version *contains* is not offered, because it is not meaningful here:
-versions are cumulative supersets, so the newest archived version alone would cover every language and
-the cleanup would degenerate into "keep one version per content item" — which is what core's
-`--keep=1` already does.
+`--keep` is a floor on how many archived versions survive per content item:
+it only comes into play when the per-language rule alone would leave fewer than N,
+and then the most recent of the otherwise removable versions are kept back until the floor is reached.
+Drafts and the published version are not counted towards it.
+
+Examples:
+```
+
+php bin/console app:content:cleanup-archived-versions
+-> will check all content objects that have more than one archived version for at least one language
+-> will remove all but the most recent version for each language that has an archived version
+
+php bin/console app:content:cleanup-archived-versions --keep=30
+-> will keep at least 30 archived versions
+-> starting from version #31, versions are removed when language is already covered in #1 to #30
+
+```
+
+## Options
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--user`, `-u` | `admin` | Ibexa username (needs content policies: remove, read, versionread) |
+| `--excluded-content-types` | `user` | Comma-separated content type identifiers to skip (same default as core) |
+| `--content-id`, `-c` | — | Comma-separated Content IDs to scope the run |
+| `--keep`, `-k` | `0` | Minimum number of archived versions to keep per content item |
+| `--dry-run` | off | Report only, delete nothing |
+| `-v` | off | Per-version output instead of a progress bar |
+
+Before a real run: back up the database, take the installation offline, run without a memory limit and
+with `--env=prod`.
+
+
+
+## Technical details
+
 
 ### Ordering: modification date, not version number
 
@@ -53,29 +88,17 @@ creation order, hence the explicit re-sort.
 
 `getObjectsIds()` is a cheap SQL query over `ezcontentobject` × `ezcontentobject_version` (`status = 3`)
 that narrows the work down; the real keep/delete decision is taken per content item on the domain
-objects in `getVersionsToRemove()`. A content item can therefore be listed as a candidate and still
-lose nothing.
+objects in `ArchivedVersionSelector::selectRemovable()`. A content item can therefore be listed as a
+candidate and still lose nothing.
 
 The `HAVING` clause is `count(v.id) > count(distinct v.initial_language_id)`: exactly one archived
 version is kept per initial language, so there is something to remove only when two archived versions
-share their initial language. Deletions per item are exactly
-`count − distinct initial languages`, so this pre-filter is precise rather than merely conservative.
+share their initial language. Without `--keep`, deletions per item are exactly
+`count − distinct initial languages`, so this pre-filter is precise rather than merely conservative; a
+`--keep` floor can only reduce that number, never raise it.
 
 The final summary counts the content items actually touched, not the candidates.
 
-## Options
-
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `--user`, `-u` | `admin` | Ibexa username (needs content policies: remove, read, versionread) |
-| `--excluded-content-types` | `user` | Comma-separated content type identifiers to skip (same default as core) |
-| `--content-id`, `-c` | — | Comma-separated Content IDs to scope the run |
-| `--keep`, `-k` | `0` | Additionally keep the N most recent archived versions |
-| `--dry-run` | off | Report only, delete nothing |
-| `-v` | off | Per-version output instead of a progress bar |
-
-Before a real run: back up the database, take the installation offline, run without a memory limit and
-with `--env=prod`.
 
 ## Compatibility
 
