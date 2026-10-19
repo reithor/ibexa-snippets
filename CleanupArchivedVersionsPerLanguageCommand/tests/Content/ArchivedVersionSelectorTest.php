@@ -156,6 +156,7 @@ final class ArchivedVersionSelectorTest extends TestCase
      *
      * @dataProvider provideKeepValues
      */
+    #[DataProvider('provideKeepValues')]
     public function testKeepIsAFloorOnTheNumberOfSurvivingVersions(
         array $versions,
         int $keep,
